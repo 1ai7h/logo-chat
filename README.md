@@ -1,5 +1,7 @@
 This is a Next.js (App Router) project that implements a chat UI for generating and iteratively editing logos using Gemini 2.5 Flash Image. All outputs are enforced to exactly 1024×1024 PNG via model hints and sharp post-processing.
 
+Currently it leverages nano banana, you can create an .env file and add your own gemini key.. 
+
 ## Getting Started
 
 Environment variables:
