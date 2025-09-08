@@ -38,13 +38,13 @@ export default function ModelSelector({
       <button
         type="button"
         onClick={() => setOpen((s) => !s)}
-        className="inline-flex items-center gap-2 border rounded-md px-2 py-1 bg-white text-sm shadow-sm hover:bg-neutral-50"
+        className="inline-flex items-center gap-3 border rounded-lg px-3 py-2 bg-white text-sm shadow-sm hover:bg-neutral-50"
         aria-haspopup="listbox"
         aria-expanded={open}
         title="Select model"
       >
         {current && (
-          <Image src={current.icon} alt="provider" width={16} height={16} className="rounded-[3px]" />
+          <Image src={current.icon} alt="provider" width={24} height={24} className="rounded-md object-contain" />
         )}
         <span className="max-w-[220px] truncate">{current?.label || value}</span>
         <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden className="opacity-60">
@@ -55,7 +55,7 @@ export default function ModelSelector({
       {open && (
         <ul
           role="listbox"
-          className="absolute right-0 mt-1 w-[280px] max-h-80 overflow-auto rounded-md border bg-white shadow-lg z-50"
+          className="absolute right-0 mt-1 w-[320px] max-h-80 overflow-auto rounded-lg border bg-white shadow-lg z-50"
         >
           {options.map((o) => (
             <li key={o.id} role="option" aria-selected={o.id === value}>
@@ -66,11 +66,11 @@ export default function ModelSelector({
                   onChange(o.id);
                   setOpen(false);
                 }}
-                className={`w-full flex items-center gap-2 px-2 py-2 text-left text-sm hover:bg-neutral-50 ${
+                className={`w-full flex items-center gap-3 px-3 py-3 text-left text-sm hover:bg-neutral-50 ${
                   o.disabled ? "opacity-50 cursor-not-allowed" : ""
                 }`}
               >
-                <Image src={o.icon} alt="provider" width={18} height={18} className="rounded-[3px]" />
+                <Image src={o.icon} alt="provider" width={28} height={28} className="rounded-md object-contain" />
                 <div className="flex-1 truncate">
                   <div className="truncate">{o.label}</div>
                   <div className="text-[11px] opacity-60">{o.provider}</div>

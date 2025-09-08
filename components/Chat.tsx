@@ -14,7 +14,7 @@ type ChatMessage = {
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-export default function Chat({ modelId, compact, threadId = "default" }: { modelId?: string; compact?: boolean; threadId?: string }) {
+export default function Chat({ modelId, compact, threadId = "default", templateId }: { modelId?: string; compact?: boolean; threadId?: string; templateId?: string }) {
   const swrKey = `/api/messages?thread=${encodeURIComponent(threadId)}`;
   const { data, isLoading } = useSWR<{ thread: string; messages: ChatMessage[] }>(swrKey, fetcher, {
     refreshInterval: 0,
@@ -32,6 +32,9 @@ export default function Chat({ modelId, compact, threadId = "default" }: { model
   
   // Get only the latest generated image/video
   const latestImage = messages.filter(m => m.imageUrl || m.videoUrl).slice(-1)[0];
+  
+  // Check if the latest image is inherited
+  const isInherited = latestImage?.text === "Inherited from parent node";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,13 +48,14 @@ export default function Chat({ modelId, compact, threadId = "default" }: { model
         fd.append("file", file);
         if (modelId) fd.append("model", modelId);
         if (selectedTheme) fd.append("theme", selectedTheme);
+        if (templateId) fd.append("template", templateId);
         fd.append("thread", threadId);
         res = await fetch("/api/messages", { method: "POST", body: fd });
       } else {
         res = await fetch("/api/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message, theme: selectedTheme, model: modelId, thread: threadId }),
+          body: JSON.stringify({ message, theme: selectedTheme, model: modelId, thread: threadId, template: templateId }),
         });
       }
       if (!res.ok) {
@@ -104,21 +108,26 @@ export default function Chat({ modelId, compact, threadId = "default" }: { model
               <div className="text-sm">Generating...</div>
             </div>
           ) : latestImage ? (
-            <div className="transition-all duration-500 ease-out overflow-hidden rounded-lg">
+            <div className="transition-all duration-500 ease-out">
+              {isInherited && (
+                <div className="mb-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                  📋 Inherited from parent node
+                </div>
+              )}
               {latestImage.imageUrl && (
                 <Image 
                   src={latestImage.imageUrl} 
                   alt="Generated Logo" 
                   width={1024} 
                   height={1024} 
-                  className="w-full h-auto max-w-full object-contain rounded-lg border shadow-sm transition-all duration-500" 
+                  className="rounded-lg border w-full h-auto shadow-sm transition-all duration-500" 
                 />
               )}
               {latestImage.videoUrl && (
                 <video 
                   src={latestImage.videoUrl} 
                   controls 
-                  className="w-full h-auto max-w-full object-contain rounded-lg border shadow-sm transition-all duration-500"
+                  className="rounded-lg border w-full h-auto shadow-sm transition-all duration-500"
                   preload="metadata"
                 >
                   Your browser does not support the video tag.
@@ -135,7 +144,7 @@ export default function Chat({ modelId, compact, threadId = "default" }: { model
 
       <form onSubmit={onSubmit} className="mt-auto grid gap-2 flex-shrink-0">
         <textarea
-          className="w-full rounded-xl border p-3 min-h-[70px] shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-neutral-900 placeholder:text-neutral-400"
+          className="w-full rounded-lg border p-2 min-h-[50px] text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-neutral-900 placeholder:text-neutral-400"
           placeholder="Type a prompt or edit instruction…"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
@@ -151,7 +160,7 @@ export default function Chat({ modelId, compact, threadId = "default" }: { model
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="rounded-full bg-neutral-800 text-white px-4 py-2.5 shadow hover:bg-neutral-900"
+            className="rounded-full bg-neutral-800 text-white px-3 py-2 text-sm shadow hover:bg-neutral-900"
           >
             Add inspiration
           </button>
@@ -170,39 +179,9 @@ export default function Chat({ modelId, compact, threadId = "default" }: { model
               </button>
             </div>
           )}
-          <button 
-            type="submit" 
-            disabled={pending} 
-            className={`relative rounded-full text-white px-5 py-2.5 shadow transition-all duration-200 ${
-              pending 
-                ? "bg-blue-600 overflow-hidden" 
-                : "bg-blue-600 hover:bg-blue-700"
-            }`}
-          >
-            {pending && (
-              <>
-                {/* Outer glow */}
-                <div className="absolute -inset-1 rounded-full opacity-75 blur-sm"
-                     style={{
-                       background: 'conic-gradient(from 0deg, #3b82f6, #60a5fa, #93c5fd, #60a5fa, #3b82f6)',
-                       animation: 'spin 2s linear infinite'
-                     }}>
-                </div>
-                {/* Inner rotating border */}
-                <div className="absolute inset-0 rounded-full" 
-                     style={{
-                       background: 'conic-gradient(from 0deg, #3b82f6, #60a5fa, #93c5fd, #60a5fa, #3b82f6)',
-                       animation: 'spin 1.5s linear infinite'
-                     }}>
-                </div>
-                {/* Button background */}
-                <div className="absolute inset-[2px] rounded-full bg-blue-600"></div>
-              </>
-            )}
-            <span className="relative z-10">
-              {pending ? "Generating…" : "Send"}
-            </span>
-          </button>
+                     <button type="submit" disabled={pending} className="rounded-full bg-blue-600 text-white px-4 py-2 text-sm shadow hover:bg-blue-700 disabled:opacity-50">
+             {pending ? "Generating…" : "Send"}
+           </button>
         </div>
       </form>
     </div>

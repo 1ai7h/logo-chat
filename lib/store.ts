@@ -33,8 +33,15 @@ export function getThread(sessionId: string, threadId = "default"): ThreadState 
   let t = session.threads.get(threadId);
   if (!t) {
     console.warn(`⚠️ Thread ${threadId} not found, creating empty thread`);
-    t = { messages: [] };
+    t = { messages: [], lastImage: undefined, lastImageMime: undefined };
     session.threads.set(threadId, t);
+  } else {
+    console.log(`📋 Retrieved existing thread ${threadId}:`, {
+      hasLastImage: !!t.lastImage,
+      lastImageSize: t.lastImage?.length || 0,
+      lastImageMime: t.lastImageMime,
+      messageCount: t.messages.length
+    });
   }
   return t;
 }
@@ -43,6 +50,10 @@ export function setLastImage(sessionId: string, threadId: string, buf: Buffer, m
   const t = getThread(sessionId, threadId);
   t.lastImage = buf;
   t.lastImageMime = mime;
+  console.log(`💾 Stored image in thread ${threadId}:`, {
+    imageSize: buf.length,
+    mimeType: mime
+  });
 }
 
 export function addMessage(sessionId: string, threadId: string, msg: ChatMessage) {
@@ -73,12 +84,34 @@ export function cloneThread(sessionId: string, sourceThread = "default", newThre
     messageCount: source.messages.length
   });
   
+  // Find the latest image/video message from the source thread
+  const latestImageMessage = source.messages
+    .filter(m => m.imageUrl || m.videoUrl)
+    .slice(-1)[0];
+  
   const cloned: ThreadState = {
     messages: [...source.messages],
     // Use slice() instead of Buffer.from() for more reliable copying
     lastImage: source.lastImage ? source.lastImage.slice() : undefined,
     lastImageMime: source.lastImageMime,
   };
+  
+  // If there's a latest image/video message, create an inherited message to display it
+  if (latestImageMessage) {
+    const inheritedMessage: ChatMessage = {
+      id: `${Date.now()}-inherited`,
+      role: "assistant" as const,
+      text: "Inherited from parent node",
+      imageUrl: latestImageMessage.imageUrl,
+      videoUrl: latestImageMessage.videoUrl,
+      timestamp: Date.now(),
+    };
+    cloned.messages.push(inheritedMessage);
+    console.log(`🖼️ Added inherited image message to thread ${id}:`, {
+      hasImage: !!inheritedMessage.imageUrl,
+      hasVideo: !!inheritedMessage.videoUrl
+    });
+  }
   
   const session = getSession(sid);
   session.threads.set(id, cloned);
@@ -87,7 +120,8 @@ export function cloneThread(sessionId: string, sourceThread = "default", newThre
   console.log(`✅ Cloned thread ${id} created:`, {
     hasLastImage: !!cloned.lastImage,
     lastImageSize: cloned.lastImage?.length || 0,
-    lastImageMime: cloned.lastImageMime
+    lastImageMime: cloned.lastImageMime,
+    messageCount: cloned.messages.length
   });
   
   return id;

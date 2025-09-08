@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Chat from "@/components/Chat";
 import ModelSelector from "@/components/ModelSelector";
+import PromptTemplateSelector from "@/components/PromptTemplateSelector";
 
 type Pos = { x: number; y: number };
 type Size = { width: number; height: number };
@@ -235,8 +236,9 @@ function ResizableDraggableBox({
 }
 
 export default function Canvas() {
-  // Simple model selector state; sent to the server but only gemini is used.
+  // Model and prompt template state
   const [model, setModel] = useState<string>("gemini-2.5-flash-image-preview");
+  const [promptTemplate, setPromptTemplate] = useState<string>("logo");
 
   // Background grid style
   const bgStyle: React.CSSProperties = useMemo(
@@ -268,7 +270,6 @@ export default function Canvas() {
   const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef<{ x: number; y: number } | null>(null);
-  const [sizes, setSizes] = useSizes("canvas-sizes");
   console.log('DEBUG: SVG dims:', dims);
   const pathsRef = useRef(paths);
   const edgesRef = useRef(edges);
@@ -291,19 +292,15 @@ export default function Canvas() {
       setFlows((f) => {
         const src = f.find((x) => x.id === sourceId) || f[f.length - 1];
         let pos = { x: chatInitial.x + 80, y: chatInitial.y };
-        
-        if (src) {
-          // Get the current size of the source window
-          const srcSize = sizes[`chat-${sourceId}`] || { width: 480, height: 320 };
-          const gap = 80; // Gap between windows
-          
-          // Position new window to the right of source window
-          pos = { 
-            x: src.pos.x + srcSize.width + gap, 
-            y: src.pos.y 
-          };
+        const srcEl = nodeRefs.current.get(sourceId);
+        if (src && srcEl) {
+          const r = srcEl.getBoundingClientRect();
+          // Place new node to the right of the parent with a comfortable gap
+          const gap = 96; // px
+          pos = { x: r.right + gap, y: r.top };
+        } else if (src) {
+          pos = { x: src.pos.x + 320, y: src.pos.y };
         }
-        
         const index = f.length + 1;
         return [...f, { id, pos, name: `Step ${index}` }];
       });
@@ -325,21 +322,8 @@ export default function Canvas() {
     const container = containerRef.current;
     if (!container) return;
     const root = container.getBoundingClientRect();
-    
-    // Calculate the bounds of all flows to ensure SVG covers everything
-    let maxX = root.width;
-    let maxY = root.height;
-    
-    flows.forEach(flow => {
-      const flowSize = sizes[`chat-${flow.id}`] || { width: 480, height: 320 };
-      const rightEdge = flow.pos.x + flowSize.width + 200; // Extra padding for connections
-      const bottomEdge = flow.pos.y + flowSize.height + 200;
-      maxX = Math.max(maxX, rightEdge);
-      maxY = Math.max(maxY, bottomEdge);
-    });
-    
-    const sw = Math.max(container.scrollWidth || root.width, maxX);
-    const sh = Math.max(container.scrollHeight || root.height, maxY);
+    const sw = container.scrollWidth || root.width;
+    const sh = container.scrollHeight || root.height;
     if (sw !== dims.w || sh !== dims.h) setDims({ w: sw, h: sh });
     const sl = container.scrollLeft;
     const st = container.scrollTop;
@@ -350,30 +334,36 @@ export default function Canvas() {
     console.log('DEBUG measure() - nodeRefs keys:', Array.from(nodeRefs.current.keys()));
     
     edgesRef.current.forEach((edge) => {
-      const sourceFlow = flows.find(f => f.id === edge.from);
-      const targetFlow = flows.find(f => f.id === edge.to);
+      const aEl = nodeRefs.current.get(edge.from);
+      const bEl = nodeRefs.current.get(edge.to);
+      console.log(`DEBUG edge ${edge.from} -> ${edge.to}:`, { aEl: !!aEl, bEl: !!bEl });
       
-      if (!sourceFlow || !targetFlow) return;
+      if (!aEl || !bEl) return;
+      const a = aEl.getBoundingClientRect();
+      const b = bEl.getBoundingClientRect();
+      // Start from the center of the plus button on the right of the parent card
+      const plusRightOffset = 24; // matches -right-6 (1.5rem)
+      const plusHalf = 20; // w-10 -> 40px, half is 20px
       
-      const sourceSize = sizes[`chat-${edge.from}`] || { width: 480, height: 320 };
-      const targetSize = sizes[`chat-${edge.to}`] || { width: 480, height: 320 };
+      // Calculate transformed positions (SVG is outside transform, elements are inside)
+      const aTransformed = {
+        right: (a.right - root.left) * transform.scale + transform.x,
+        top: (a.top - root.top) * transform.scale + transform.y,
+        height: a.height * transform.scale
+      };
+      const bTransformed = {
+        left: (b.left - root.left) * transform.scale + transform.x,
+        top: (b.top - root.top) * transform.scale + transform.y,
+        height: b.height * transform.scale
+      };
       
-      // Calculate positions in world space, then apply transform
-      const sourceX = sourceFlow.pos.x + sourceSize.width;
-      const sourceY = sourceFlow.pos.y + sourceSize.height / 2;
-      const targetX = targetFlow.pos.x;
-      const targetY = targetFlow.pos.y + targetSize.height / 2;
-      
-      // Apply canvas transform
-      const sx = sourceX * transform.scale + transform.x;
-      const sy = sourceY * transform.scale + transform.y;
-      const tx = targetX * transform.scale + transform.x;
-      const ty = targetY * transform.scale + transform.y;
-      
-      // Create smooth curve
-      const dx = Math.max(40, Math.abs(tx - sx) / 3);
+      const sx = aTransformed.right + (plusRightOffset + plusHalf) * transform.scale + sl;
+      const sy = aTransformed.top + aTransformed.height / 2 + st;
+      const tx = bTransformed.left + sl;
+      const ty = bTransformed.top + bTransformed.height / 2 + st;
+      const dx = Math.max(60, Math.abs(tx - sx) / 2);
       const d = `M ${sx} ${sy} C ${sx + dx} ${sy}, ${tx - dx} ${ty}, ${tx} ${ty}`;
-      
+      console.log(`DEBUG path for ${edge.from} -> ${edge.to}:`, { sx, sy, tx, ty, d });
       next.push({ from: edge.from, to: edge.to, d });
     });
     
@@ -382,7 +372,7 @@ export default function Canvas() {
     // Temporarily disabled to debug
     // if (next.length === 0 && edges.length > 0) {
     //   // Keep previous paths if nodes aren't measured yet (avoid flashing/disappearing lines)
-    //   console.log('DEBUG: keeping previous paths, nodes not measured yet');
+    //   ('DEBUG: keeping previous paths, nodes not measured yet');
     //   return;
     // }
     setPaths(next);
@@ -398,7 +388,7 @@ export default function Canvas() {
       cancelAnimationFrame(raf);
       clearTimeout(timeout);
     };
-  }, [flows, edges, transform, sizes]);
+  }, [flows, edges, transform]);
 
   useEffect(() => {
     const on = () => measure();
@@ -576,16 +566,25 @@ export default function Canvas() {
                 <div className="text-sm font-semibold">{flow.name}</div>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-xs opacity-70">Model</label>
-                <ModelSelector
-                  value={model}
-                  onChange={setModel}
-                  options={[
-                    { id: "gemini-2.5-flash-image-preview", label: "Gemini 2.5 Flash Image", provider: "Gemini", icon: "/providers/gemini.svg" },
-                    { id: "veo-3", label: "Veo 3 Video Generation", provider: "Gemini", icon: "/providers/gemini.svg" },
-                    { id: "gpt-5", label: "GPT-5 (UI only)", provider: "OpenAI", icon: "/providers/openai.svg" },
-                  ]}
-                />
+                <div className="flex items-center gap-2">
+                  <label className="text-xs opacity-70">Style</label>
+                  <PromptTemplateSelector
+                    value={promptTemplate}
+                    onChange={setPromptTemplate}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs opacity-70">Model</label>
+                  <ModelSelector
+                    value={model}
+                    onChange={setModel}
+                    options={[
+                                          { id: "gemini-2.5-flash-image-preview", label: "Gemini 2.5 Flash Image", provider: "Gemini", icon: "/google_logo.png" },
+                    { id: "veo-3.0-generate-preview", label: "Veo 3 Video Generation", provider: "Gemini", icon: "/google_logo.png" },
+                      { id: "gpt-5", label: "GPT-5 (UI only)", provider: "OpenAI", icon: "/openai-logo.png" },
+                    ]}
+                  />
+                </div>
                 {/* Rename */}
                 <button
                   className="ml-2 text-xs px-2 py-1 rounded border hover:bg-neutral-50"
@@ -622,7 +621,7 @@ export default function Canvas() {
               </div>
             </div>
             <div className="p-4">
-              <Chat modelId={model} threadId={flow.id} />
+              <Chat modelId={model} threadId={flow.id} templateId={promptTemplate} />
             </div>
             <button
               className="absolute top-1/2 -translate-y-1/2 -right-6 rounded-full w-10 h-10 bg-blue-600 text-white shadow-lg hover:bg-blue-700"

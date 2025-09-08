@@ -12,9 +12,9 @@ export async function GET(req: NextRequest) {
   const sid = await getOrCreateSessionId();
   const url = new URL(req.url);
   const threadId = url.searchParams.get("thread") || "default";
-  console.log(`📥 GET messages - Session: ${sid}, Thread: ${threadId}`);
+  (`📥 GET messages - Session: ${sid}, Thread: ${threadId}`);
   const msgs = getMessages(sid, threadId);
-  console.log(`📤 Returning ${msgs.length} messages for thread ${threadId}`);
+  (`📤 Returning ${msgs.length} messages for thread ${threadId}`);
   return NextResponse.json({ thread: threadId, messages: msgs });
 }
 
@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
   let themeName: string | undefined;
   let modelId: string | undefined;
   let threadId: string = "default";
+  let templateId: string | undefined;
 
   const contentType = req.headers.get("content-type") || "";
   try {
@@ -51,6 +52,10 @@ export async function POST(req: NextRequest) {
       if (typeof thread === "string" && thread.trim()) {
         threadId = thread.trim();
       }
+      const template = form.get("template");
+      if (typeof template === "string" && template.trim()) {
+        templateId = template.trim();
+      }
     } else {
       const body = await req.json();
       prompt = body?.message || "";
@@ -62,6 +67,9 @@ export async function POST(req: NextRequest) {
       }
       if (typeof body?.thread === "string" && body.thread.trim()) {
         threadId = body.thread.trim();
+      }
+      if (typeof body?.template === "string" && body.template.trim()) {
+        templateId = body.template.trim();
       }
     }
   } catch (e: unknown) {
@@ -132,7 +140,7 @@ export async function POST(req: NextRequest) {
   });
 
   try {
-    const isVideoModel = modelId === "veo-3";
+    const isVideoModel = modelId === "veo-3.0-generate-preview";
     
     if (isVideoModel) {
       // Generate video with Veo 3
@@ -166,6 +174,7 @@ export async function POST(req: NextRequest) {
         baseImage,
         size: { width: TARGET_SIZE, height: TARGET_SIZE },
         modelId,
+        templateId,
       });
 
       // Enforce 1024x1024 PNG
